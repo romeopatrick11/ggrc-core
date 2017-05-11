@@ -74,7 +74,11 @@ class CloudEndpointsQueryAPI(protorpc.remote.Service):
       ge_user = get_endpoints_current_user(raise_unauthorized=True)
       db_user = Person.query.filter_by(email=ge_user.email()).first()
       if not db_user:
-        raise endpoints.ForbiddenException()
+        raise endpoints.ForbiddenException(u'User {} is not registered'
+                                           .format(ge_user.email()))
+      if not db_user.is_authenticated():
+        raise endpoints.ForbiddenException(u'User {} has no access'
+                                           .format(ge_user.email()))
 
       flask.g.user = db_user
 
