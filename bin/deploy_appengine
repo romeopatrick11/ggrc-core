@@ -6,15 +6,16 @@ SCRIPTPATH=$( cd "$(dirname "$0")" ; pwd -P )
 
 if [[ -z "$1" ]]
 then
-  echo "Usage: `basename ${0}` <deployment_settings_file>"
+  echo "Usage: `basename ${0}` <deployment_settings_files>"
   exit
 fi
 
-SETTINGS_FILE=$1
-
 cd "${SCRIPTPATH}/.."
 source "bin/init_env"
-source "${SETTINGS_FILE}"
+for settings_file
+do
+  source "$settings_file"
+done
 
 make clean_deploy
 make deploy \
