@@ -15,7 +15,7 @@ SETTINGS_FILE="$1"
 ACCOUNT="$2"
 KEY_FILE="$3"
 
-ENV_OVERRIDE_FILE="override.sh"
+ENV_OVERRIDE_FILE=${ENV_OVERRIDE_FILE:-"override.sh"}
 VERSION="1"
 DOMAIN="appspot.com"
 
