@@ -13,7 +13,6 @@ import json
 import time
 from logging import getLogger
 from collections import defaultdict
-from exceptions import TypeError
 from wsgiref.handlers import format_date_time
 from urllib import urlencode
 
@@ -56,6 +55,7 @@ def get_oauth_credentials():
 
 
 def _get_cache_manager():
+  """Return an instance of CacheManager for MemCache."""
   from ggrc.cache import CacheManager, MemCache
   cache_manager = CacheManager()
   cache_manager.initialize(MemCache())
@@ -417,6 +417,7 @@ def log_event(session, obj=None, current_user_id=None, flush=True,
 
 
 def clear_permission_cache():
+  """Clear memcached permissions for al users."""
   if not getattr(settings, 'MEMCACHE_MECHANISM', False):
     return
   cache = _get_cache_manager().cache_object.memcache_client
@@ -516,16 +517,9 @@ class ModelView(View):
     return self.filter_query_by_request(
         query, filter_by_contexts=filter_by_contexts)
 
-  def get_resource_match_query(self, model, id):
-    columns = self.get_match_columns(model)
-    query = db.session.query(*columns).filter(
-        and_(
-            self._get_type_where_clause(model),
-            columns[0] == id))
-    return query
-
   # Default model/DB helpers
   def get_collection(self, filter_by_contexts=True):
+    """Get proper query for self.model with permissions check included."""
     if '__stubs_only' not in request.args and \
        hasattr(self.model, 'eager_query'):
       query = self.model.eager_query()
@@ -639,14 +633,15 @@ class ModelView(View):
     query = query.distinct()
     return query
 
-  def get_object(self, id):
+  def get_object(self, id_):
+    """Get self.model instance by id from the DB."""
     # This could also use `self.pk`
     # .one() is required as long as any .eager_load() adds joins using
     #   'contains_eager()' to the core query, because 'LIMIT 1' breaks up
     #   that JOIN result (e.g. Categorizable)
     try:
       return self.get_collection(filter_by_contexts=False)\
-          .filter(self.model.id == id).one()
+          .filter(self.model.id == id_).one()
     except sqlalchemy.orm.exc.NoResultFound:
       return None
 
@@ -675,6 +670,7 @@ class ModelView(View):
 
   @classmethod
   def url_for_preserving_querystring(cls, *args, **kwargs):
+    """Get url for a resource (collection) preserving original GET params."""
     url = cls.url_for(*args, **kwargs)
     # preserve original query string
     idx = request.url.find('?')
@@ -689,6 +685,7 @@ class ModelView(View):
 
   @classmethod
   def url_for(cls, *args, **kwargs):
+    """Get url for a resource or collection."""
     if not has_request_context():
       # TODO: make url_for working with no request context
       return "#"
