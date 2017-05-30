@@ -43,6 +43,9 @@ HOSTNAME="${APPENGINE_INSTANCE}.${DOMAIN}"
 
 db_migrate
 
+TMP_DIR="/tmp/deploy/$RANDOM"
+mkdir -p "$TMP_DIR"
+
 write_visible_message 'Setting project into config'
 gcloud config set project "$APPENGINE_INSTANCE"
 
@@ -53,14 +56,14 @@ write_visible_message "Deploying src/app.yaml into version $VERSION"
 gcloud app deploy src/app.yaml --version="$VERSION"
 
 write_visible_message 'Getting openapi spec'
-python src/packages/endpoints/endpointscfg.py get_openapi_spec ggrc.cloud_endpoints.api.CloudEndpointsQueryAPI --hostname "$HOSTNAME" -o /vagrant/src
+python src/packages/endpoints/endpointscfg.py get_openapi_spec ggrc.cloud_endpoints.api.CloudEndpointsQueryAPI --hostname "$HOSTNAME" -o "$TMP_DIR"
 
 write_visible_message 'Deploying openapi spec'
-gcloud service-management deploy src/QueryAPIv1openapi.json
+gcloud service-management deploy "$TMP_DIR/QueryAPIv1openapi.json"
 
 write_visible_message 'Getting service config'
 export version_service=(`gcloud service-management configs list --service="$HOSTNAME" --limit 1 | tail -n 1`)
-cat >endpoints.sh <<EOF
+cat >"$TMP_DIR/endpoints.sh" <<EOF
 #!/usr/bin/env bash
 
 ENDPOINTS_SERVICE_VERSION="${version_service[0]}"
@@ -68,8 +71,11 @@ ENDPOINTS_SERVICE_NAME="${version_service[1]}"
 EOF
 
 write_visible_message 'Making new app.yaml'
-deploy_appengine "$SETTINGS_FILE" endpoints.sh
+deploy_appengine "$SETTINGS_FILE" "$TMP_DIR/endpoints.sh"
 cat /vagrant/src/app.yaml
 
 write_visible_message 'Redeploying with new app.yaml'
 gcloud app deploy src/app.yaml --version="$VERSION"
+
+write_visible_message 'Cleaning up'
+rm -r "$TMP_DIR"
