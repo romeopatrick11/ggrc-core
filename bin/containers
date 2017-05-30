@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Copyright (C) 2017 Google Inc.
+# Licensed under http://www.apache.org/licenses/LICENSE-2.0 <see LICENSE file>
+
+set -o nounset
+set -o errexit
+
+declare -r DOCKERFILE="docker-compose-clean.yml"
+
+usage () {
+  cat <<EOF
+Usage: $(basename ${0}) ACTION PROJECT [MODE]
+
+Allowed ACTIONs:
+  setup           (Re-)build, run and provision the required containers
+  stop            Stop the containers
+
+Allowed MODEs:
+  dev             (default) Setup application container + db container
+  deploy          Setup only application container
+EOF
+}
+
+fail_invalid_usage () {
+  usage >&2
+  exit 1
+}
+
+main () {
+  ACTION="${1:-}"
+  PROJECT="${2:-}"
+  MODE="${3:-dev}"
+
+  if [[ -z "$PROJECT" ]]; then
+    fail_invalid_usage
+  fi
+
+  if [[ "$MODE" != "dev" && "$MODE" != "deploy" ]]; then
+    fail_invalid_usage
+  fi
+
+  case "$ACTION" in
+    "setup") setup "$PROJECT" "$MODE" ;;
+    "stop") stop "$PROJECT" "$MODE" ;;
+    *) fail_invalid_usage ;;
+  esac
+
+}
+
+mode_to_machine_ids () {
+  MODE="$1"
+  case "$MODE" in
+    "dev") echo "cleandev db";;
+    "deploy") echo "cleandev";;
+  esac
+}
+
+setup () {
+  PROJECT="$1"
+  MODE="$2"
+
+  MACHINE_IDS=$(mode_to_machine_ids "$MODE")
+
+  git submodule update --init
+
+  docker-compose --file "$DOCKERFILE" --project-name "$PROJECT" \
+    build $MACHINE_IDS
+  docker-compose --file "$DOCKERFILE" --project-name "$PROJECT" \
+    up --force-recreate -d $MACHINE_IDS
+
+  docker exec -i "${PROJECT}_cleandev_1" su -c "
+    source /vagrant/bin/init_vagrant_env
+    make clean_appengine && make appengine
+  "
+  if [[ "$MODE" == "dev" ]]; then
+    docker exec -i "${PROJECT}_cleandev_1" su -c "
+      source /vagrant/bin/init_vagrant_env
+      db_reset
+    "
+  fi
+}
+
+stop () {
+  PROJECT="$1"
+  MODE="$2"
+
+  MACHINE_IDS=$(mode_to_machine_ids "$MODE")
+
+  docker-compose --file "$DOCKERFILE" --project-name "$PROJECT" stop
+}
+
+main "$@"
