@@ -70,6 +70,7 @@ setup () {
 
   docker exec -i "${PROJECT}_cleandev_1" su -c "
     source /vagrant/bin/init_vagrant_env
+    make -B bower_components
     make clean_appengine && make appengine
   "
   if [[ "$MODE" == "dev" ]]; then

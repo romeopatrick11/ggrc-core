@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+
+set -o errexit
+set -o nounset
+
+declare -r SCRIPTPATH=$( cd "$(dirname "$0")" ; pwd -P )
+declare -r TARGET_REMOTE="upstream"
+
+declare -r SETTINGS_FILENAME="settings.sh"
+declare -r ENV_OVERRIDE_FILENAME="override.sh"
+declare -r SERVICE_ACCOUNT_FILENAME="service-account"
+declare -r DEPLOY_PREFIX="extras/deploy"
+
+cd "${SCRIPTPATH}/../"
+source "$SCRIPTPATH/util.sh"
+
+usage () {
+  cat <<EOF
+Usage: $(basename ${0}) TARGET_REF SERVICE ACCOUNT
+
+Arguments:
+  TARGET_REF   Git-compliant reference of a version to deploy
+  SERVICE      Target service to deploy
+  ACCOUNT      Service account to deploy by
+
+Note: the script expects several prerequisites:
+  - all deployment-specific files are be located at
+    <project_root>/extra/deploy/<service>/. For example:
+    ~/projects/ggrc-core/extra/deploy/ggrc-dev/
+  - file with deployment-specific is extra/deploy/<service>/settings.sh
+  - file with env override variables is extra/deploy/<service>/override.sh
+  - file with service account name is extra/deploy/<service>/service-account.
+    Example content: test-account@ggrc-dev.iam.gserviceaccount.com.key
+  - file with service account private key is
+    extra/deploy/<service>/<account@...>.key. For example:
+    extra/deploy/ggrc-dev/test-account@ggrc-dev.iam.gserviceaccount.com.key
+
+Example usage:
+  $(basename ${0}) 0.10.17-Raspberry ggrc-dev
+EOF
+}
+
+fail_invalid_usage () {
+  usage >&2
+  exit 1
+}
+
+main () {
+  local TARGET_REF="${1:-}"
+  local SERVICE="${2:-}"
+
+  if [[ -z "$TARGET_REF" || -z "$SERVICE" ]]; then
+    fail_invalid_usage
+  fi
+
+  git fetch "$TARGET_REMOTE"
+  git checkout "$TARGET_REF"
+
+  local -r SETTINGS_FILE="$DEPLOY_PREFIX/$SERVICE/$SETTINGS_FILENAME"
+  local -r ENV_OVERRIDE_FILE="$DEPLOY_PREFIX/$SERVICE/$ENV_OVERRIDE_FILENAME"
+  local -r ACCOUNT_FILE="$DEPLOY_PREFIX/$SERVICE/$SERVICE_ACCOUNT_FILENAME"
+  local PROJECT="deploy-$SERVICE"
+
+  local FILE_MISSING=""
+  if [[ ! -f "$SETTINGS_FILE" ]]; then
+    echo "No settings file found at '$SETTINGS_FILE'" >&2
+    FILE_MISSING="yes"
+  fi
+  if [[ ! -f "$ENV_OVERRIDE_FILE" ]]; then
+    echo "No settings override file found at '$ENV_OVERRIDE_FILE'" >&2
+    FILE_MISSING="yes"
+  fi
+  if [[ ! -f "$ACCOUNT_FILE" ]]; then
+    echo "No service-account file found at '$ACCOUNT_FILE'" >&2
+    local -r ACCOUNT=""
+    FILE_MISSING="yes"
+  else
+    local -r ACCOUNT="$(<$ACCOUNT_FILE)"
+  fi
+
+  local -r KEY_FILE="$DEPLOY_PREFIX/$SERVICE/$ACCOUNT.key"
+  if [[ -f "$ACCOUNT_FILE" && ! -f "$KEY_FILE" ]]; then
+    echo "No private key file found at '$KEY_FILE'" >&2
+    FILE_MISSING="yes"
+  fi
+
+  if [[ -n "$FILE_MISSING" ]]; then
+    return -1
+  fi
+
+  PROJECT=$(clean_project_name "$PROJECT")
+  ./bin/containers setup "$PROJECT" deploy
+
+  echo "Running deploy"
+
+  docker exec -i "${PROJECT}_cleandev_1" su root -c "
+    export ENV_OVERRIDE_FILE=$ENV_OVERRIDE_FILE
+    /vagrant/bin/do_deploy $SETTINGS_FILE $ACCOUNT $KEY_FILE
+  " ; rc=$?
+
+  ./bin/containers stop "$PROJECT"
+  exit $rc
+}
+
+main "$@"

@@ -79,6 +79,7 @@ skip_files:
 - service_specs/.*
 - assets/.*
 - reports/.*
+- extras/deploy/.*
 
 # Define certain environment variables
 env_variables:
