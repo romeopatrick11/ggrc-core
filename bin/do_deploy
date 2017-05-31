@@ -17,7 +17,6 @@ KEY_FILE="$3"
 
 ENV_OVERRIDE_FILE=${ENV_OVERRIDE_FILE:-"override.sh"}
 VERSION="1"
-DOMAIN="appspot.com"
 
 
 write_visible_message () {
@@ -39,8 +38,6 @@ cat /vagrant/src/app.yaml
 source "$SETTINGS_FILE"
 source "$ENV_OVERRIDE_FILE"
 
-HOSTNAME="${APPENGINE_INSTANCE}.${DOMAIN}"
-
 db_migrate
 
 TMP_DIR="/tmp/deploy/$RANDOM"
@@ -54,6 +51,10 @@ gcloud auth activate-service-account "$ACCOUNT" --key-file="$KEY_FILE"
 
 write_visible_message "Deploying src/app.yaml into version $VERSION"
 gcloud app deploy src/app.yaml --version="$VERSION"
+
+write_visible_message "Getting default hostname for the app"
+HOSTNAME=($(gcloud app describe | grep defaultHostname))
+HOSTNAME="${HOSTNAME[1]}"
 
 write_visible_message 'Getting openapi spec'
 python src/packages/endpoints/endpointscfg.py get_openapi_spec ggrc.cloud_endpoints.api.CloudEndpointsQueryAPI --hostname "$HOSTNAME" -o "$TMP_DIR"
